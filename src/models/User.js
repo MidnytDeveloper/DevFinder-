@@ -1,20 +1,67 @@
 const mongoose = require("mongoose");
+const validator = require("validator");
 
-const userSchema = new mongoose.Schema({
-  firstName: {
-    type: String,
-  },
-  lastName: {
-    type: String,
-  },
-  emailId: {
-    type: String,
-  },
-  password: {
-    type: String,
-  },
-});
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
 
+const userSchema = new mongoose.Schema(
+  {
+    firstName: {
+      type: String,
+      required: true,
+      minLength: 4,
+      maxLength: 50,
+    },
+    lastName: {
+      type: String,
+      required: true,
+    },
+    emailId: {
+      type: String,
+      required: [true, "EmailID is required"],
+      // unique: true,
+    },
+    password: {
+      type: String,
+      required: true,
+    },
+    gender: {
+      type: String,
+      validate(value) {
+        if (!["male", "female", "others"].includes(value)) {
+          throw new error("Gender data is not valid");
+        }
+      },
+    },
+    photoUrl: {
+      type: String,
+      default:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQMggZhOIH1vXmnv0bCyBu8iEuYQO-Dw1kpp7_v2mwhw_SKksetiK0e4VWUak3pm-v-Moc&usqp=CAU",
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+userSchema.methods.getJWT = async function () {
+  const user = this;
+  const token = await jwt.sign({ _id: user._id }, "DEV@Finder$790", {
+    expiresIn: "7d",
+  });
+  return token;
+};
+
+userSchema.methods.validatePassword = async function (passwordInputByUser) {
+  const user = this;
+  const passwordHash = user.password;
+  const isPasswordValid = await bcrypt.compare(
+    passwordInputByUser,
+    passwordHash
+  );
+
+  return isPasswordValid;
+};
 const User = mongoose.model("User", userSchema);
 
 module.exports = User;

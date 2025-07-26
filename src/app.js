@@ -1,86 +1,73 @@
 const express = require("express");
 const connectDB = require("./config/database");
 const app = express();
+const cookieParser = require("cookie-parser");
 const User = require("./models/User.js");
+const { validateSignUpData } = require("./Utils/Validation.js");
+const bcrypt = require("bcrypt");
+const { userAuth } = require("./middlewares/auth");
 
 app.use(express.json());
+app.use(cookieParser());
 
-// signup api
+// SignUp Api-----------------------------------------------------------
 app.post("/signup", async (req, res) => {
-  const user = new User(req.body);
-  console.log(req.body);
   try {
+    validateSignUpData(req);
+    const { firstName, lastName, emailId, password } = req.body;
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = new User({
+      firstName,
+      lastName,
+      emailId,
+      password: passwordHash,
+    });
     await user.save();
     res.send("User Added successfully");
   } catch (err) {
-    res.status(400).send("Error saving the user" + err.message);
+    console.log(err);
+    res.status(400).send("ERROR : " + err.message);
   }
 });
 
-// getting user by email Id using get request :
-app.get("/userdataByEmail", async (req, res) => {
-  const userMail = req.body.emailId;
+// LogIn Api-----------------------------------------------------------
+app.post("/login", async (req, res) => {
   try {
-    const users = await User.find({ emailId: userMail });
-    if (users.length === 0) {
-      res.status(404).send("User Not Found");
+    const { emailId, password } = req.body;
+    const user = await User.findOne({ emailId: emailId });
+    if (!user) {
+      throw new Error("Invalid credentials");
+    }
+    const isPasswordValid = await user.validatePassword(password);
+
+    if (isPasswordValid) {
+      // create a JWT token
+      const token = await user.getJWT();
+      res.cookie("token", token);
+      res.send("Login Successful");
     } else {
-      res.send(users);
+      throw new Error("Invalid credentials");
     }
   } catch (err) {
-    res.status(404).send("Something went wrong");
+    res.status(400).send("ERROR : " + err.message);
   }
 });
 
-// getting user if two users have same emailId
-app.get("/user", async (req, res) => {
-  const userMail = req.body.emailId;
+// Profile Api-----------------------------------------------------------
+app.get("/profile", userAuth, async (req, res) => {
   try {
-    const users = await User.findOne({ emailId: userMail });
-    if (!users) {
-      res.status(404).send("User Not Found");
-    } else {
-      res.send(users);
-    }
+    console.log(req);
+    const user = req.user;
+    res.send(user);
   } catch (err) {
-    res.status(404).send("Something went wrong");
+    res.status(400).send("ERROR : " + err.message);
   }
 });
 
-// getting all the users
-app.get("/feed", async (req, res) => {
-  try {
-    const users = await User.find({});
-    res.send(users);
-  } catch (err) {
-    res.status(400).send("Something went wrong");
-  }
-});
-
-// delete a user by id
-app.delete("/delete", async (req, res) => {
-  const userId = req.body.userId;
-  try {
-    const user = await User.findByIdAndDelete(userId);
-    console.log(user)
-    res.send("User Deleted Successfully");
-  } catch (err) {
-    res.status(404).send("Something went wrong");
-  }
-});
-
-// partial update a user by patch
-app.patch("/patch", async (req, res) => {
-  const userId = req.body.userId;
-  console.log(userId)
-  const data = req.body;
-  console.log(data)
-  try {
-    await User.findByIdAndUpdate( userId , data); 
-    res.send("user updated successfully");
-  } catch (err) {
-    res.status(400).send("something went wrong");
-  }
+// Connection Api
+app.post("/sendConnectionRequest", userAuth, async (req, res) => {
+  const user = req.user;
+  res.send(user.firstName + " sent a connection request");
 });
 
 connectDB()
